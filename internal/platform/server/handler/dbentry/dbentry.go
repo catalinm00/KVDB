@@ -2,7 +2,7 @@ package dbentry
 
 import "net/http"
 
-func CreateEntry(w http.ResponseWriter, r *http.Request) {
+func SaveEntry(w http.ResponseWriter, r *http.Request) {
 
 }
 
