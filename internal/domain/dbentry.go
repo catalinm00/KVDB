@@ -1,9 +1,9 @@
 package domain
 
 type DbEntry struct {
-	key       string
-	value     string
-	tombstone bool
+	key       string `json:"key,omitempty"`
+	value     string `json:"value,omitempty"`
+	tombstone bool   `json:"tombstone,omitempty"`
 }
 
 func NewDbEntry(key, value string, tombstone bool) DbEntry {

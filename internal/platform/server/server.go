@@ -10,16 +10,23 @@ import (
 	"net/http"
 )
 
+const (
+	host = "localhost"
+	port = 3000
+)
+
 type Server struct {
-	httpAddr string
-	engine   *chi.Mux
+	httpAddr     string
+	engine       *chi.Mux
+	entryHandler *dbentry.DbEntryHandler
 }
 
-func NewServer(host string, port int) Server {
+func NewServer(entryHandler *dbentry.DbEntryHandler) Server {
 	url := fmt.Sprintf("%s:%d", host, port)
 	srv := Server{
-		engine:   chi.NewRouter(),
-		httpAddr: url,
+		engine:       chi.NewRouter(),
+		httpAddr:     url,
+		entryHandler: entryHandler,
 	}
 	srv.engine.Use(middleware.Logger)
 	srv.registerRoutes()
@@ -33,7 +40,9 @@ func (s *Server) Run() error {
 
 func (s *Server) registerRoutes() {
 	s.engine.Get("/health", health.CheckHandler)
-	s.engine.Get("/db/{key}", dbentry.GetEntry)
-	s.engine.Post("/db/{key}", dbentry.SaveEntry)
-	s.engine.Delete("/db/{key}", dbentry.DeleteEntry)
+	s.engine.Route("/api", func(r chi.Router) {
+		r.Get("/db/{key}", s.entryHandler.GetEntry)
+		r.Post("/db", s.entryHandler.SaveEntry)
+		r.Delete("/db/{key}", s.entryHandler.DeleteEntry)
+	})
 }

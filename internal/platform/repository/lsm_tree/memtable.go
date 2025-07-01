@@ -13,9 +13,9 @@ type Memtable struct {
 	logger   log.Logger
 }
 
-func NewMemtable(wal *WAL, s *SkipList) *Memtable {
+func NewMemtable(wal *WAL) *Memtable {
 	return &Memtable{
-		skiplist: s,
+		skiplist: NewSkipList(5, 5),
 		wal:      wal,
 	}
 }
@@ -28,7 +28,7 @@ func (mt *Memtable) Set(entry DbEntry) {
 	if err := mt.wal.Write(entry); err != nil {
 		mt.logger.Panicf("write wal failed: %v", err)
 	}
-	mt.logger.Printf("Memtable set [key: %v] [value: %v] [tombstone: %v]", entry.Key(), string(entry.Value()), entry.Tombstone())
+	//mt.logger.Printf("Memtable set [key: %v] [value: %v] [tombstone: %v]", entry.Key(), string(entry.Value()), entry.Tombstone())
 }
 
 func (mt *Memtable) Get(key string) (DbEntry, bool) {

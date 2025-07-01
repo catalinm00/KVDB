@@ -7,7 +7,7 @@ import (
 
 func main() {
 	log.Println("Starting app...")
-	err := bootstrap.Run()
+	_, err := bootstrap.Run()
 	if err != nil {
 		log.Fatal(err)
 	}
