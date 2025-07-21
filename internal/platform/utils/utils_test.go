@@ -2,9 +2,11 @@ package utils
 
 import (
 	. "KVDB/internal/domain"
+	"bufio"
 	"bytes"
 	"io"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -19,8 +21,9 @@ func TestAppendDbEntryAndReadOneEntry(t *testing.T) {
 		t.Fatalf("AppendDbEntry falló: %v", err)
 	}
 
-	// Leer desde el buffer
-	readEntry, err := ReadOneEntry(&buf)
+	// Leer desde el buffer usando scanner
+	scanner := bufio.NewScanner(&buf)
+	readEntry, err := ReadOneEntry(scanner)
 	if err != nil {
 		t.Fatalf("ReadOneEntry falló: %v", err)
 	}
@@ -77,17 +80,18 @@ func TestReadAllEntries(t *testing.T) {
 
 func TestReadOneEntry_EOF(t *testing.T) {
 	empty := bytes.NewReader(nil)
+	scanner := bufio.NewScanner(empty)
 
-	_, err := ReadOneEntry(empty)
+	_, err := ReadOneEntry(scanner)
 	if err == nil {
 		t.Fatal("esperado error EOF, pero no se recibió error")
 	}
-	if err != io.EOF && err != io.ErrUnexpectedEOF {
+	if err != io.EOF {
 		t.Errorf("esperado EOF, obtenido: %v", err)
 	}
 }
 
-func TestAppendDbEntry_TombstoneEncoding(t *testing.T) {
+func TestAppendDbEntryTombstoneEncoding(t *testing.T) {
 	entry := NewDbEntry("key", "value", true)
 	var buf bytes.Buffer
 
@@ -95,14 +99,63 @@ func TestAppendDbEntry_TombstoneEncoding(t *testing.T) {
 		t.Fatalf("error en append: %v", err)
 	}
 
-	// Leer todo y examinar el último byte (tombstone)
-	data := buf.Bytes()
-	if len(data) < 1 {
-		t.Fatal("no hay suficientes datos para validar tombstone")
+	// Leer la línea completa y verificar que termine con ",1\n"
+	data := buf.String()
+	if !strings.HasSuffix(data, ",1\n") {
+		t.Errorf("se esperaba que terminara con ',1\\n', obtenido: %q", data)
 	}
-	tombstoneByte := data[len(data)-1]
+}
 
-	if tombstoneByte != 1 {
-		t.Errorf("se esperaba tombstone = 1, obtenido %d", tombstoneByte)
+func TestAppendDbEntryWithCommasInData(t *testing.T) {
+	// Probar con datos que contengan comas
+	entry := NewDbEntry("key,with,commas", "value,with,commas", false)
+	var buf bytes.Buffer
+
+	if err := AppendDbEntry(&buf, entry); err != nil {
+		t.Fatalf("error en append: %v", err)
+	}
+
+	// Leer la entrada de vuelta
+	scanner := bufio.NewScanner(&buf)
+	readEntry, err := ReadOneEntry(scanner)
+	if err != nil {
+		t.Fatalf("ReadOneEntry falló: %v", err)
+	}
+
+	if readEntry != entry {
+		t.Errorf("entrada leída no coincide:\nesperado: %+v\nobtenido: %+v", entry, readEntry)
+	}
+}
+
+func TestMultipleEntriesInBuffer(t *testing.T) {
+	var buf bytes.Buffer
+
+	entries := []DbEntry{
+		NewDbEntry("key1", "value1", false),
+		NewDbEntry("key2", "value2", true),
+		NewDbEntry("key3", "value3", false),
+	}
+
+	// Escribir todas las entradas
+	for _, e := range entries {
+		if err := AppendDbEntry(&buf, e); err != nil {
+			t.Fatalf("fallo al escribir entrada: %v", err)
+		}
+	}
+
+	// Leer todas las entradas de vuelta
+	readEntries, err := ReadAllEntries(&buf)
+	if err != nil {
+		t.Fatalf("ReadAllEntries falló: %v", err)
+	}
+
+	if len(readEntries) != len(entries) {
+		t.Fatalf("esperadas %d entradas, obtenidas %d", len(entries), len(readEntries))
+	}
+
+	for i := range entries {
+		if readEntries[i] != entries[i] {
+			t.Errorf("entrada %d no coincide: esperada %+v, obtenida %+v", i, entries[i], readEntries[i])
+		}
 	}
 }

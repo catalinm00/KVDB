@@ -2,88 +2,146 @@ package utils
 
 import (
 	. "KVDB/internal/domain"
+	"bufio"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
+	"strconv"
+	"strings"
 )
 
+// AppendDbEntry escribe una entrada completa en una sola línea
 func AppendDbEntry(f io.Writer, entry DbEntry) error {
-	// Convertimos strings a []byte
 	keyBytes := []byte(entry.Key())
 	valueBytes := []byte(entry.Value())
 
-	// Escribir longitud y contenido de la key
 	keyLen := uint32(len(keyBytes))
-	if err := binary.Write(f, binary.LittleEndian, keyLen); err != nil {
-		return err
-	}
-	if _, err := f.Write(keyBytes); err != nil {
-		return err
-	}
-
-	// Escribir longitud y contenido del value
 	valueLen := uint32(len(valueBytes))
-	if err := binary.Write(f, binary.LittleEndian, valueLen); err != nil {
-		return err
-	}
-	if _, err := f.Write(valueBytes); err != nil {
-		return err
-	}
 
-	// Escribir el tombstone como un byte (0 = false, 1 = true)
-	var tombstoneByte byte = 0
+	tombstone := byte(0)
 	if entry.Tombstone() {
-		tombstoneByte = 1
-	}
-	if err := binary.Write(f, binary.LittleEndian, tombstoneByte); err != nil {
-		return err
+		tombstone = 1
 	}
 
-	return nil
+	// Crear buffer para escribir todos los datos binarios
+	var line strings.Builder
+
+	// Escribir longitud de key (4 bytes en little endian)
+	keyLenBytes := make([]byte, 4)
+	binary.LittleEndian.PutUint32(keyLenBytes, keyLen)
+	line.WriteString(fmt.Sprintf("%d,", keyLen))
+
+	// Escribir key
+	line.WriteString(string(keyBytes))
+	line.WriteString(",")
+
+	// Escribir longitud de value (4 bytes en little endian)
+	line.WriteString(fmt.Sprintf("%d,", valueLen))
+
+	// Escribir value
+	line.WriteString(string(valueBytes))
+	line.WriteString(",")
+
+	// Escribir tombstone
+	line.WriteString(fmt.Sprintf("%d", tombstone))
+
+	// Escribir nueva línea
+	line.WriteString("\n")
+
+	// Escribir toda la línea de una vez
+	_, err := f.Write([]byte(line.String()))
+	return err
 }
 
-// ReadOneEntry lee una sola entrada desde r
-func ReadOneEntry(r io.Reader) (DbEntry, error) {
+// ReadOneEntry lee una sola entrada desde una línea
+func ReadOneEntry(r *bufio.Scanner) (DbEntry, error) {
 	var entry DbEntry
 
-	// Leer longitud key
-	var keyLen uint32
-	if err := binary.Read(r, binary.LittleEndian, &keyLen); err != nil {
-		return entry, err
+	if !r.Scan() {
+		if err := r.Err(); err != nil {
+			return entry, err
+		}
+		return entry, io.EOF
 	}
 
-	keyBytes := make([]byte, keyLen)
-	if _, err := io.ReadFull(r, keyBytes); err != nil {
-		return entry, err
+	line := r.Text()
+	if line == "" {
+		return entry, io.EOF
 	}
 
-	// Leer longitud value
-	var valueLen uint32
-	if err := binary.Read(r, binary.LittleEndian, &valueLen); err != nil {
-		return entry, err
+	// Parsear la línea: keyLen,key,valueLen,value,tombstone
+	parts := strings.Split(line, ",")
+	if len(parts) < 3 {
+		return entry, errors.New("formato de línea inválido")
 	}
 
-	valueBytes := make([]byte, valueLen)
-	if _, err := io.ReadFull(r, valueBytes); err != nil {
-		return entry, err
+	// Leer longitud de key
+	keyLen, err := strconv.ParseUint(parts[0], 10, 32)
+	if err != nil {
+		return entry, fmt.Errorf("error parseando longitud de key: %v", err)
 	}
 
-	// Leer tombstone (1 byte)
-	var tombstoneByte byte
-	if err := binary.Read(r, binary.LittleEndian, &tombstoneByte); err != nil {
-		return entry, err
+	// Encontrar la key y value basándose en las longitudes
+	// Necesitamos reconstruir la línea porque la key/value pueden contener comas
+	remainingLine := strings.Join(parts[1:], ",")
+
+	if len(remainingLine) < int(keyLen) {
+		return entry, errors.New("longitud de key inválida")
 	}
 
-	entry = NewDbEntry(string(keyBytes), string(valueBytes), tombstoneByte != 0)
+	key := remainingLine[:keyLen]
+	remainingLine = remainingLine[keyLen:]
 
+	if !strings.HasPrefix(remainingLine, ",") {
+		return entry, errors.New("formato inválido después de key")
+	}
+	remainingLine = remainingLine[1:] // quitar la coma
+
+	// Leer longitud de value
+	commaIndex := strings.Index(remainingLine, ",")
+	if commaIndex == -1 {
+		return entry, errors.New("no se encontró separador después de longitud de value")
+	}
+
+	valueLenStr := remainingLine[:commaIndex]
+	valueLen, err := strconv.ParseUint(valueLenStr, 10, 32)
+	if err != nil {
+		return entry, fmt.Errorf("error parseando longitud de value: %v", err)
+	}
+
+	remainingLine = remainingLine[commaIndex+1:]
+
+	if len(remainingLine) < int(valueLen) {
+		return entry, errors.New("longitud de value inválida")
+	}
+
+	value := remainingLine[:valueLen]
+	remainingLine = remainingLine[valueLen:]
+
+	if !strings.HasPrefix(remainingLine, ",") {
+		return entry, errors.New("formato inválido después de value")
+	}
+	remainingLine = remainingLine[1:] // quitar la coma
+
+	// Leer tombstone
+	tombstoneStr := remainingLine
+	tombstoneVal, err := strconv.ParseUint(tombstoneStr, 10, 8)
+	if err != nil {
+		return entry, fmt.Errorf("error parseando tombstone: %v", err)
+	}
+
+	entry = NewDbEntry(key, value, tombstoneVal != 0)
 	return entry, nil
 }
 
 // ReadAllEntries lee todas las entradas de un archivo WAL
 func ReadAllEntries(f io.Reader) ([]DbEntry, error) {
 	var entries []DbEntry
+	scanner := bufio.NewScanner(f)
+
 	for {
-		entry, err := ReadOneEntry(f)
+		entry, err := ReadOneEntry(scanner)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break // fin de archivo
@@ -92,5 +150,6 @@ func ReadAllEntries(f io.Reader) ([]DbEntry, error) {
 		}
 		entries = append(entries, entry)
 	}
+
 	return entries, nil
 }
