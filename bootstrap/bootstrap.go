@@ -2,6 +2,8 @@ package bootstrap
 
 import (
 	"KVDB/internal/application/service"
+	"KVDB/internal/platform/client"
+	"KVDB/internal/platform/config"
 	"KVDB/internal/platform/repository"
 	"KVDB/internal/platform/repository/lsm_tree"
 	"KVDB/internal/platform/server"
@@ -13,8 +15,7 @@ import (
 func Run() (bool, error) {
 	container := dig.New()
 	serviceConstructors := []interface{}{
-		lsm_tree.NewWal,
-		dir,
+		wal,
 		lsm_tree.NewMemtable,
 		repository.NewLSMTreeRepository,
 		service.NewDeleteEntryService,
@@ -22,6 +23,7 @@ func Run() (bool, error) {
 		service.NewGetEntryService,
 		dbentry.NewDbEntryHandler,
 		server.NewServer,
+		configServerClient,
 	}
 	for _, service := range serviceConstructors {
 		if err := container.Provide(service); err != nil {
@@ -38,6 +40,12 @@ func Run() (bool, error) {
 	return true, nil
 }
 
-func dir() string {
-	return "internal/logs/"
+func wal() (*lsm_tree.WAL, error) {
+	dir := config.LoadConfig().WalDirectory
+	return lsm_tree.NewWal(dir)
+}
+
+func configServerClient() *client.ConfigServerClient {
+	url := config.LoadConfig().ConfigServerUrl
+	return client.NewConfigServerClient(url)
 }
