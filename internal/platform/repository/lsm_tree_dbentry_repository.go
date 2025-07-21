@@ -6,20 +6,17 @@ import (
 )
 
 type LSMTreeRepository struct {
-	wal *lsm_tree.WAL
-	mt  *lsm_tree.Memtable
+	mt *lsm_tree.Memtable
 }
 
-func NewLSMTreeRepository(wal *lsm_tree.WAL, mt *lsm_tree.Memtable) *LSMTreeRepository {
+func NewLSMTreeRepository(mt *lsm_tree.Memtable) *LSMTreeRepository {
 	return &LSMTreeRepository{
-		wal: wal,
-		mt:  mt,
+		mt: mt,
 	}
 }
 
 func (r *LSMTreeRepository) Save(e domain.DbEntry) domain.DbEntry {
 	r.mt.Set(e)
-	r.wal.Write(e)
 	return e
 }
 

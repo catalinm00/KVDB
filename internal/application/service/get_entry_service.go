@@ -21,14 +21,19 @@ type GetEntryQuery struct {
 
 type GetEntryResult struct {
 	Entry domain.DbEntry
+	Found bool
 }
 
 func (s *GetEntryService) Execute(query GetEntryQuery) GetEntryResult {
 	entry, found := s.repository.Get(query.Key)
 	if !found {
-		return GetEntryResult{}
+		return GetEntryResult{Found: false}
+	}
+	if entry.Tombstone() {
+		return GetEntryResult{Found: false}
 	}
 	return GetEntryResult{
 		Entry: entry,
+		Found: true,
 	}
 }

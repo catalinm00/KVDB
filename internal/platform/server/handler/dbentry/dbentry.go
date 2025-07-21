@@ -60,6 +60,11 @@ func (h *DbEntryHandler) GetEntry(w http.ResponseWriter, r *http.Request) {
 	result := h.getService.Execute(service.GetEntryQuery{
 		Key: key,
 	})
+	if !result.Found {
+		w.WriteHeader(404)
+		fmt.Fprintf(w, "Not found")
+		return
+	}
 	output, _ := json.Marshal(MapToEntryResponse(result.Entry))
 	fmt.Fprintf(w, string(output))
 }
