@@ -2,6 +2,7 @@ package server
 
 import (
 	"KVDB/internal/platform/server/handler/dbentry"
+	"KVDB/internal/platform/server/handler/dbinstance"
 	"KVDB/internal/platform/server/handler/health"
 	"fmt"
 	"github.com/go-chi/chi/v5"
@@ -16,17 +17,19 @@ const (
 )
 
 type Server struct {
-	httpAddr     string
-	engine       *chi.Mux
-	entryHandler *dbentry.DbEntryHandler
+	httpAddr        string
+	engine          *chi.Mux
+	entryHandler    *dbentry.DbEntryHandler
+	instanceHandler *dbinstance.DbInstanceHandler
 }
 
-func NewServer(entryHandler *dbentry.DbEntryHandler) Server {
+func NewServer(entryHandler *dbentry.DbEntryHandler, instanceHandler *dbinstance.DbInstanceHandler) Server {
 	url := fmt.Sprintf("%s:%d", host, port)
 	srv := Server{
-		engine:       chi.NewRouter(),
-		httpAddr:     url,
-		entryHandler: entryHandler,
+		engine:          chi.NewRouter(),
+		httpAddr:        url,
+		entryHandler:    entryHandler,
+		instanceHandler: instanceHandler,
 	}
 	srv.engine.Use(middleware.Logger)
 	srv.registerRoutes()
@@ -44,5 +47,7 @@ func (s *Server) registerRoutes() {
 		r.Get("/db/{key}", s.entryHandler.GetEntry)
 		r.Post("/db", s.entryHandler.SaveEntry)
 		r.Delete("/db/{key}", s.entryHandler.DeleteEntry)
+
+		r.Post("/instances", s.instanceHandler.UpdateDbInstances)
 	})
 }
