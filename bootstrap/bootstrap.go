@@ -11,7 +11,6 @@ import (
 	"KVDB/internal/platform/server/handler/dbentry"
 	"KVDB/internal/platform/server/handler/dbinstance"
 	"go.uber.org/dig"
-	"log"
 )
 
 func Run() (bool, error) {
@@ -24,11 +23,12 @@ func Run() (bool, error) {
 		service.NewDeleteEntryService,
 		service.NewSaveEntryService,
 		service.NewGetEntryService,
-		dbentry.NewDbEntryHandler,
 		service.NewInstanceAutoRegisterService,
 		service.NewUpdateInstancesService,
+		service.NewGetAllInstancesService,
 		server.NewServer,
 		config.LoadConfig,
+		dbentry.NewDbEntryHandler,
 		dbinstance.NewDbInstanceHandler,
 		configServerClient,
 	}
@@ -37,10 +37,15 @@ func Run() (bool, error) {
 			return false, err
 		}
 	}
-	err := container.Invoke(func(s server.Server, ar *service.InstanceAutoRegisterService) {
+	err := container.Invoke(func(s server.Server,
+		ar *service.InstanceAutoRegisterService,
+		g *service.GetAllInstancesService) {
 		ar.Execute()
+		err := g.Execute()
+		if err != nil {
+			return
+		}
 		s.Run()
-		log.Println("Dependencies OK")
 	})
 	if err != nil {
 		return false, err
