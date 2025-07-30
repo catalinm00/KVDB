@@ -10,6 +10,7 @@ import (
 	"KVDB/internal/platform/server"
 	"KVDB/internal/platform/server/handler/dbentry"
 	"KVDB/internal/platform/server/handler/dbinstance"
+	"flag"
 	"go.uber.org/dig"
 )
 
@@ -37,6 +38,7 @@ func Run() (bool, error) {
 			return false, err
 		}
 	}
+	flag.Parse()
 	err := container.Invoke(func(s server.Server,
 		ar *service.InstanceAutoRegisterService,
 		g *service.GetAllInstancesService) {

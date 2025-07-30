@@ -17,5 +17,5 @@ func NewUpdateInstancesService(manager *domain.DbInstanceManager) *UpdateInstanc
 
 func (u UpdateInstancesService) Execute(instances []domain.DbInstance) {
 	u.manager.SetReplicas(&instances)
-	log.Println("Updated instance replicas")
+	log.Println("Updated instance replicas, total replicas:", len(instances))
 }

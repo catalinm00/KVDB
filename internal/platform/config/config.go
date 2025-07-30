@@ -1,11 +1,12 @@
 package config
 
 import (
-	"fmt"
+	"flag"
 	"github.com/joho/godotenv"
 	"os"
-	"strconv"
 )
+
+var portCmd = flag.Int("port", 3000, "HTTP server port")
 
 type Config struct {
 	ServerPort      int
@@ -16,12 +17,8 @@ type Config struct {
 
 func LoadConfig() Config {
 	godotenv.Load(".env")
-	port, err := strconv.Atoi(os.Getenv("HTTP_SERVER_PORT"))
-	if err != nil {
-		fmt.Println("Error:", err)
-	}
 	return Config{
-		ServerPort:      port,
+		ServerPort:      *portCmd,
 		WalDirectory:    os.Getenv("WAL_DIRECTORY"),
 		ConfigServerUrl: os.Getenv("CONFIG_SERVER_URL"),
 		DeploymentMode:  os.Getenv("DEPLOYMENT_MODE"),
