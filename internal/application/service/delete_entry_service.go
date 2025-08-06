@@ -8,7 +8,7 @@ import (
 )
 
 type DeleteEntryService struct {
-	repository *repository.LSMTreeRepository
+	repository domain.DbEntryRepository
 }
 
 func NewDeleteEntryService(repository *repository.LSMTreeRepository) *DeleteEntryService {

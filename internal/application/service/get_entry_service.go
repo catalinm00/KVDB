@@ -6,7 +6,7 @@ import (
 )
 
 type GetEntryService struct {
-	repository *repository.LSMTreeRepository
+	repository domain.DbEntryRepository
 }
 
 func NewGetEntryService(repository *repository.LSMTreeRepository) *GetEntryService {

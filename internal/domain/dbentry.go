@@ -39,7 +39,7 @@ func (entry *DbEntry) Delete() {
 }
 
 type DbEntryRepository interface {
-	Save(entry DbEntry)
-	Delete(key string)
-	Get(key string)
+	Save(entry DbEntry) DbEntry
+	Delete(key string) (*DbEntry, bool)
+	Get(key string) (DbEntry, bool)
 }
