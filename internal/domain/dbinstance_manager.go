@@ -23,3 +23,19 @@ func (m *DbInstanceManager) SetReplicas(replicas *[]DbInstance) {
 	defer m.mu.Unlock()
 	m.Replicas = replicas
 }
+
+func (m *DbInstanceManager) GetById(id uint64) *DbInstance {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.CurrentInstance != nil && m.CurrentInstance.Id == id {
+		return m.CurrentInstance
+	}
+	if m.Replicas != nil {
+		for _, replica := range *m.Replicas {
+			if replica.Id == id {
+				return &replica
+			}
+		}
+	}
+	return nil
+}

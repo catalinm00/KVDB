@@ -25,17 +25,21 @@ type CommitAckSender interface {
 	SendCommitAck(ack TransactionCommitAck) error
 }
 
-func NewTransactionManager(instance *DbInstance, tb TransactionBroadcaster, cam *TransactionCommitAckManager,
-	repository DbEntryRepository) *TransactionManager {
+func NewTransactionManager(tb TransactionBroadcaster, cam *TransactionCommitAckManager,
+	repository DbEntryRepository, ackSender CommitAckSender) *TransactionManager {
 	return &TransactionManager{
-		currentInstance:        instance,
 		CurrentTransactions:    make(map[string]Transaction),
 		transactionBroadcaster: tb,
 		commitAckManager:       cam,
+		commitAckSender:        ackSender,
 		conflictDetector:       &ConflictFinder{},
 		conflictResolver:       &LWWConflictResolver{},
 		dbEntryRepository:      repository,
 	}
+}
+
+func (tm *TransactionManager) SetCurrentInstance(instance *DbInstance) {
+	tm.currentInstance = instance
 }
 
 func (tm *TransactionManager) StartTransaction(transaction Transaction) {
@@ -147,14 +151,7 @@ func (tm *TransactionManager) AddCommitAck(ack TransactionCommitAck) {
 	if !tm.commitAckManager.AckedByAllInstances(ack.TransactionId) {
 		return
 	}
-	if !tm.commitAckManager.HasOnlyPositiveAcks(ack.TransactionId) {
-		transaction, exists := tm.CurrentTransactions[ack.TransactionId]
-		if !exists {
-			return
-		}
-		tm.StartTransactionAbortion(transaction)
-		return
-	}
+
 	transaction, exists := tm.CurrentTransactions[ack.TransactionId]
 	if !exists {
 		return

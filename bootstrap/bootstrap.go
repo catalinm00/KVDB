@@ -5,6 +5,8 @@ import (
 	"KVDB/internal/domain"
 	"KVDB/internal/platform/client"
 	"KVDB/internal/platform/config"
+	"KVDB/internal/platform/messaging/zeromq/listener"
+	"KVDB/internal/platform/messaging/zeromq/publisher"
 	"KVDB/internal/platform/repository"
 	"KVDB/internal/platform/repository/lsm_tree"
 	"KVDB/internal/platform/server"
@@ -21,6 +23,8 @@ func Run() (bool, error) {
 		domain.NewDbInstanceManager,
 		lsm_tree.NewMemtable,
 		repository.NewLSMTreeRepository,
+		domain.NewTransactionCommitAckManager,
+		transactionManager,
 		service.NewDeleteEntryService,
 		service.NewSaveEntryService,
 		service.NewGetEntryService,
@@ -31,6 +35,9 @@ func Run() (bool, error) {
 		config.LoadConfig,
 		dbentry.NewDbEntryHandler,
 		dbinstance.NewDbInstanceHandler,
+		publisher.NewZeroMQCommitAckSender,
+		publisher.NewZeroMQTransactionBroadcaster,
+		listener.NewZeromqCommitAckListener,
 		configServerClient,
 	}
 	for _, service := range serviceConstructors {
@@ -41,9 +48,13 @@ func Run() (bool, error) {
 	flag.Parse()
 	err := container.Invoke(func(s server.Server,
 		ar *service.InstanceAutoRegisterService,
-		g *service.GetAllInstancesService) {
+		g *service.GetAllInstancesService,
+		ackListener *listener.ZeromqCommitAckListener,
+		ackSender *publisher.ZeroMQCommitAckSender) {
 		ar.Execute()
 		err := g.Execute()
+		go ackListener.Listen()
+		err = ackSender.Initialize()
 		if err != nil {
 			return
 		}
@@ -63,4 +74,9 @@ func wal() (*lsm_tree.WAL, error) {
 func configServerClient() *client.ConfigServerClient {
 	url := config.LoadConfig().ConfigServerUrl
 	return client.NewConfigServerClient(url)
+}
+
+func transactionManager(repo *repository.LSMTreeRepository, ackSender *publisher.ZeroMQCommitAckSender,
+	transactionBroadCaster *publisher.ZeroMQTransactionBroadcaster, cam *domain.TransactionCommitAckManager) *domain.TransactionManager {
+	return domain.NewTransactionManager(transactionBroadCaster, cam, repo, ackSender)
 }
