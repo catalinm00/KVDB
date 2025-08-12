@@ -2,7 +2,6 @@ package service
 
 import (
 	"KVDB/internal/domain"
-	"KVDB/internal/platform/repository"
 	"errors"
 	"fmt"
 )
@@ -11,7 +10,7 @@ type DeleteEntryService struct {
 	repository domain.DbEntryRepository
 }
 
-func NewDeleteEntryService(repository *repository.LSMTreeRepository) *DeleteEntryService {
+func NewDeleteEntryService(repository domain.DbEntryRepository) *DeleteEntryService {
 	return &DeleteEntryService{
 		repository: repository,
 	}

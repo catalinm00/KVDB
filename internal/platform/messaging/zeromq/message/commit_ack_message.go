@@ -19,3 +19,13 @@ func AckMessageFromCommitAck(ack domain.TransactionCommitAck) AckMessage {
 		Valid:              ack.Valid,
 	}
 }
+
+func (a *AckMessage) ToCommitAck() domain.TransactionCommitAck {
+	return domain.TransactionCommitAck{
+		TransactionId:      a.TransactionId,
+		SenderInstanceId:   a.SenderInstanceId,
+		ReceiverInstanceId: a.ReceiverInstanceId,
+		Timestamp:          a.Timestamp,
+		Valid:              a.Valid,
+	}
+}

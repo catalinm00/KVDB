@@ -17,13 +17,12 @@ type InstanceAutoRegisterService struct {
 }
 
 func NewInstanceAutoRegisterService(configServer *client.ConfigServerClient, instanceManager *domain.DbInstanceManager,
-	transactionManager *domain.TransactionManager, config config.Config) *InstanceAutoRegisterService {
+	config config.Config) *InstanceAutoRegisterService {
 
 	manager := InstanceAutoRegisterService{
-		configServer:       configServer,
-		instanceManager:    instanceManager,
-		transactionManager: transactionManager,
-		config:             config,
+		configServer:    configServer,
+		instanceManager: instanceManager,
+		config:          config,
 	}
 	return &manager
 }
@@ -42,7 +41,6 @@ func (i *InstanceAutoRegisterService) Execute() {
 		registeredInstance, err := i.configServer.RegisterInstance(instance)
 		if err == nil {
 			i.instanceManager.SetCurrentInstance(registeredInstance)
-			i.transactionManager.SetCurrentInstance(registeredInstance)
 			log.Printf("Registered current instance with id %d\n", registeredInstance.Id)
 			break
 		}

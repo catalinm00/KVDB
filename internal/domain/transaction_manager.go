@@ -1,9 +1,29 @@
 package domain
 
-import "sync"
+import (
+	"sync"
+)
 
+type TransactionExecutionStrategy interface {
+	Execute(t Transaction) <-chan TransactionResult
+	AddTransaction(transaction Transaction)
+	AbortTransaction(id string)
+}
+
+type BasicTransactionManager interface {
+	AddTransaction(transaction Transaction)
+	AbortTransaction(id string)
+}
+
+type ReliableBroadcastTransactionManager interface {
+	InitCommit(t Transaction)
+	ConfirmCommit(t Transaction)
+	AddCommitAck(ack TransactionCommitAck)
+}
 type TransactionManager struct {
+	subscribers            map[string]chan TransactionResult
 	currentInstance        *DbInstance
+	instanceManager        *DbInstanceManager
 	CurrentTransactions    map[string]Transaction
 	transactionBroadcaster TransactionBroadcaster
 	commitAckManager       CommitAckManager
@@ -26,8 +46,8 @@ type CommitAckSender interface {
 }
 
 func NewTransactionManager(tb TransactionBroadcaster, cam *TransactionCommitAckManager,
-	repository DbEntryRepository, ackSender CommitAckSender) *TransactionManager {
-	return &TransactionManager{
+	repository DbEntryRepository, ackSender CommitAckSender, im *DbInstanceManager) *TransactionManager {
+	tm := &TransactionManager{
 		CurrentTransactions:    make(map[string]Transaction),
 		transactionBroadcaster: tb,
 		commitAckManager:       cam,
@@ -35,11 +55,38 @@ func NewTransactionManager(tb TransactionBroadcaster, cam *TransactionCommitAckM
 		conflictDetector:       &ConflictFinder{},
 		conflictResolver:       &LWWConflictResolver{},
 		dbEntryRepository:      repository,
+		instanceManager:        im,
+		subscribers:            make(map[string]chan TransactionResult),
 	}
+	tm.setCurrentInstance()
+	return tm
 }
 
-func (tm *TransactionManager) SetCurrentInstance(instance *DbInstance) {
-	tm.currentInstance = instance
+func (tm *TransactionManager) setCurrentInstance() {
+	go func() {
+		resCh := tm.instanceManager.SubscribeToGetCurrentInstance()
+		res := <-resCh
+		tm.currentInstance = &res
+	}()
+}
+
+func (tm *TransactionManager) Execute(t Transaction) <-chan TransactionResult {
+	t.InstanceId = tm.currentInstance.Id
+	tm.CurrentTransactions[t.Id] = t
+	ch := make(chan TransactionResult, 1)
+	tm.subscribers[t.Id] = ch
+	err := tm.transactionBroadcaster.BroadcastTransaction(t)
+	if err != nil {
+		ch <- FromTransaction(t)
+		return ch
+	}
+
+	err = tm.transactionBroadcaster.BroadcastCommitInit(t)
+	if err != nil {
+		ch <- FromTransaction(t)
+		return ch
+	}
+	return ch
 }
 
 func (tm *TransactionManager) StartTransaction(transaction Transaction) {
@@ -64,6 +111,7 @@ func (tm *TransactionManager) AddTransaction(transaction Transaction) {
 }
 
 func (tm *TransactionManager) StartTransactionAbortion(transaction Transaction) {
+	tm.subscribers[transaction.Id] <- FromTransaction(transaction)
 	err := tm.transactionBroadcaster.BroadcastAbort(transaction)
 	if err != nil {
 		return
@@ -94,8 +142,8 @@ func (tm *TransactionManager) StartCommitInit(transaction Transaction) {
 }
 
 func (tm *TransactionManager) InitCommit(transaction Transaction) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 	if _, exists := tm.CurrentTransactions[transaction.Id]; !exists {
 		return
 	}
@@ -113,8 +161,6 @@ func (tm *TransactionManager) InitCommit(transaction Transaction) {
 }
 
 func (tm *TransactionManager) StartCommitConfirmation(transaction Transaction) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
 	if _, exists := tm.CurrentTransactions[transaction.Id]; !exists {
 		return
 	}
@@ -135,6 +181,11 @@ func (tm *TransactionManager) ConfirmCommit(transaction Transaction) {
 	defer tm.mu.Unlock()
 	delete(tm.CurrentTransactions, transaction.Id)
 	tm.commitAckManager.Remove(transaction.Id)
+	if transaction.InstanceId == tm.currentInstance.Id {
+		result := FromTransaction(transaction)
+		result.MarkAsSuccessful()
+		tm.subscribers[transaction.Id] <- result
+	}
 }
 
 func (tm *TransactionManager) AddCommitAck(ack TransactionCommitAck) {

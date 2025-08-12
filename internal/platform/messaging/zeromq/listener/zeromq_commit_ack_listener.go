@@ -15,21 +15,33 @@ import (
 type ZeromqCommitAckListener struct {
 	pull            zmq4.Socket
 	instanceManager *domain.DbInstanceManager
+	RbTm            domain.ReliableBroadcastTransactionManager
 }
 
-func NewZeromqCommitAckListener(instanceManager *domain.DbInstanceManager) *ZeromqCommitAckListener {
+type ZmqCommitAckListenerDependencies struct {
+	InstanceManager *domain.DbInstanceManager
+	RbTm            domain.ReliableBroadcastTransactionManager
+}
+
+const (
+	PullPortOffset = 8000
+	PushPortOffset = 8001
+)
+
+func NewZeromqCommitAckListener(deps ZmqCommitAckListenerDependencies) *ZeromqCommitAckListener {
 	reconnectOpt := zmq4.WithAutomaticReconnect(true)
 	retryOpt := zmq4.WithDialerRetry(time.Second * 5)
 	pull := zmq4.NewPull(context.Background(), reconnectOpt, retryOpt)
 	listener := &ZeromqCommitAckListener{
 		pull:            pull,
-		instanceManager: instanceManager,
+		instanceManager: deps.InstanceManager,
+		RbTm:            deps.RbTm,
 	}
 	return listener
 }
 
 func (l *ZeromqCommitAckListener) Listen() {
-	address := fmt.Sprintf("tcp://*:%d", l.instanceManager.CurrentInstance.Port+8002)
+	address := fmt.Sprintf("tcp://*:%d", l.instanceManager.CurrentInstance.Port+PullPortOffset)
 	err := l.pull.Listen(address)
 	if err != nil {
 		return
@@ -40,26 +52,26 @@ func (l *ZeromqCommitAckListener) Listen() {
 	go func() {
 		for {
 			msg, err := l.pull.Recv()
-			log.Println("ZeromqCommitAckListener received message:", msg)
+			log.Println("ZeromqCommitAckListener received message:", msg.String())
 			if err != nil {
-				log.Fatalln("Error receiving message:", err)
+				log.Println("Error receiving message:", err)
 				if errors.Is(err, zmq4.ErrClosedConn) {
 					log.Println("Socket closed, exiting listener")
 					return
 				}
 				continue
 			}
-			m, _ := unmarshalAckMessage(msg.Bytes())
+			m, _ := unmarshalMessage(msg.Bytes())
 			msgCh <- m
 		}
 	}()
 
 	for msg := range msgCh {
-		log.Println("Mensaje recibido por canal:", msg)
+		go l.RbTm.AddCommitAck(msg.ToCommitAck())
 	}
 }
 
-func unmarshalAckMessage(data []byte) (message.AckMessage, error) {
+func unmarshalMessage(data []byte) (message.AckMessage, error) {
 	var ackMsg message.AckMessage
 	err := json.Unmarshal(data, &ackMsg)
 	if err != nil {

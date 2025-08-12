@@ -2,14 +2,13 @@ package service
 
 import (
 	"KVDB/internal/domain"
-	"KVDB/internal/platform/repository"
 )
 
 type GetEntryService struct {
 	repository domain.DbEntryRepository
 }
 
-func NewGetEntryService(repository *repository.LSMTreeRepository) *GetEntryService {
+func NewGetEntryService(repository domain.DbEntryRepository) *GetEntryService {
 	return &GetEntryService{
 		repository: repository,
 	}

@@ -13,70 +13,49 @@ import (
 	"KVDB/internal/platform/server/handler/dbentry"
 	"KVDB/internal/platform/server/handler/dbinstance"
 	"flag"
-	"go.uber.org/dig"
 )
 
 func Run() (bool, error) {
-	container := dig.New()
-	serviceConstructors := []interface{}{
-		wal,
-		domain.NewDbInstanceManager,
-		lsm_tree.NewMemtable,
-		repository.NewLSMTreeRepository,
-		domain.NewTransactionCommitAckManager,
-		transactionManager,
-		service.NewDeleteEntryService,
-		service.NewSaveEntryService,
-		service.NewGetEntryService,
-		service.NewInstanceAutoRegisterService,
-		service.NewUpdateInstancesService,
-		service.NewGetAllInstancesService,
-		server.NewServer,
-		config.LoadConfig,
-		dbentry.NewDbEntryHandler,
-		dbinstance.NewDbInstanceHandler,
-		publisher.NewZeroMQCommitAckSender,
-		publisher.NewZeroMQTransactionBroadcaster,
-		listener.NewZeromqCommitAckListener,
-		configServerClient,
-	}
-	for _, service := range serviceConstructors {
-		if err := container.Provide(service); err != nil {
-			return false, err
-		}
-	}
 	flag.Parse()
-	err := container.Invoke(func(s server.Server,
-		ar *service.InstanceAutoRegisterService,
-		g *service.GetAllInstancesService,
-		ackListener *listener.ZeromqCommitAckListener,
-		ackSender *publisher.ZeroMQCommitAckSender) {
-		ar.Execute()
-		err := g.Execute()
-		go ackListener.Listen()
-		err = ackSender.Initialize()
-		if err != nil {
-			return
-		}
-		s.Run()
-	})
+
+	configuration := config.LoadConfig()
+	w, _ := lsm_tree.NewWal(configuration.WalDirectory)
+	mem := lsm_tree.NewMemtable(w)
+	repo := repository.NewLSMTreeRepository(mem)
+	im := domain.NewDbInstanceManager()
+	ackSender := publisher.NewZeroMQCommitAckSender(im)
+	tbc := publisher.NewZeroMQTransactionBroadcaster(im)
+	tcam := domain.NewTransactionCommitAckManager(im)
+	tm := domain.NewTransactionManager(tbc, tcam, repo, ackSender, im)
+	csClient := client.NewConfigServerClient(configuration.ConfigServerUrl)
+	arSvc := service.NewInstanceAutoRegisterService(csClient, im, configuration)
+	uiSvc := service.NewUpdateInstancesService(im)
+	gaiSvc := service.NewGetAllInstancesService(csClient, im)
+	delSvc := service.NewDeleteEntryService(repo)
+	saveSvc := service.NewSaveEntryService(tm)
+	getSvc := service.NewGetEntryService(repo)
+	dbEntryH := dbentry.NewDbEntryHandler(saveSvc, delSvc, getSvc)
+	instanceH := dbinstance.NewDbInstanceHandler(uiSvc)
+	srv := server.NewServer(dbEntryH, instanceH, configuration)
+	transactionListener := listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, tm, tm})
+	ackListener := listener.NewZeromqCommitAckListener(listener.ZmqCommitAckListenerDependencies{im, tm})
+
+	arSvc.Execute()
+	err := gaiSvc.Execute()
 	if err != nil {
 		return false, err
 	}
+
+	go ackListener.Listen()
+	go transactionListener.Listen()
+	err = ackSender.Initialize()
+	if err != nil {
+		return false, err
+	}
+	err = srv.Run()
+	if err != nil {
+		return false, err
+	}
+
 	return true, nil
-}
-
-func wal() (*lsm_tree.WAL, error) {
-	dir := config.LoadConfig().WalDirectory
-	return lsm_tree.NewWal(dir)
-}
-
-func configServerClient() *client.ConfigServerClient {
-	url := config.LoadConfig().ConfigServerUrl
-	return client.NewConfigServerClient(url)
-}
-
-func transactionManager(repo *repository.LSMTreeRepository, ackSender *publisher.ZeroMQCommitAckSender,
-	transactionBroadCaster *publisher.ZeroMQTransactionBroadcaster, cam *domain.TransactionCommitAckManager) *domain.TransactionManager {
-	return domain.NewTransactionManager(transactionBroadCaster, cam, repo, ackSender)
 }

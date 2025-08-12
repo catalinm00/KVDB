@@ -2,16 +2,16 @@ package service
 
 import (
 	"KVDB/internal/domain"
-	"KVDB/internal/platform/repository"
 )
 
 type SaveEntryService struct {
-	repository domain.DbEntryRepository
+	transactionManager domain.TransactionExecutionStrategy
 }
 
-func NewSaveEntryService(repository *repository.LSMTreeRepository) *SaveEntryService {
+func NewSaveEntryService(
+	transactionManager domain.TransactionExecutionStrategy) *SaveEntryService {
 	return &SaveEntryService{
-		repository: repository,
+		transactionManager: transactionManager,
 	}
 }
 
@@ -25,6 +25,11 @@ type SaveEntryResult struct {
 }
 
 func (s *SaveEntryService) Execute(command SaveEntryCommand) SaveEntryResult {
-	entry := s.repository.Save(domain.NewDbEntry(command.Key, command.Value, false))
+	entry := domain.NewDbEntry(command.Key, command.Value, false)
+	resCh := s.transactionManager.Execute(domain.TransactionFromWriteEntry(entry))
+	res := <-resCh
+	if !res.Success {
+		return SaveEntryResult{}
+	}
 	return SaveEntryResult{Entry: entry}
 }

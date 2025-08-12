@@ -5,6 +5,7 @@ import (
 	"KVDB/internal/platform/messaging/zeromq/message"
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/go-zeromq/zmq4"
 	"time"
 )
@@ -13,6 +14,14 @@ type ZeroMQTransactionBroadcaster struct {
 	pub             zmq4.Socket
 	instanceManager *domain.DbInstanceManager
 }
+
+const (
+	TransactionPubPortOffset  = 8003
+	TRANSACTION_TOPIC         = "transaction"
+	COMMIT_INIT_TOPIC         = "commit_init"
+	COMMIT_CONFIRMATION_TOPIC = "confirm_commit"
+	ABORT_TOPIC               = "abort"
+)
 
 func NewZeroMQTransactionBroadcaster(im *domain.DbInstanceManager) *ZeroMQTransactionBroadcaster {
 	reconnectOpt := zmq4.WithAutomaticReconnect(true)
@@ -25,12 +34,14 @@ func NewZeroMQTransactionBroadcaster(im *domain.DbInstanceManager) *ZeroMQTransa
 	}
 }
 
-const (
-	TRANSACTION_TOPIC         = "transaction"
-	COMMIT_INIT_TOPIC         = "commit_init"
-	COMMIT_CONFIRMATION_TOPIC = "confirm_commit"
-	ABORT_TOPIC               = "abort"
-)
+func (z *ZeroMQTransactionBroadcaster) Initialize() {
+	instance := z.instanceManager.CurrentInstance
+	if instance == nil {
+		return
+	}
+	address := fmt.Sprintf("tcp://*:%d", instance.Port+TransactionPubPortOffset)
+	z.pub.Listen(address)
+}
 
 func (b *ZeroMQTransactionBroadcaster) BroadcastTransaction(transaction domain.Transaction) error {
 	payload, err := MarshalTransactionMessage(message.TransactionMessageFrom(transaction))
