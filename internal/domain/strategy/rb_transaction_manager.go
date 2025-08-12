@@ -1,68 +1,42 @@
-package domain
+package strategy
 
 import (
+	"KVDB/internal/domain"
 	"sync"
 )
 
-type TransactionExecutionStrategy interface {
-	Execute(t Transaction) <-chan TransactionResult
-	AddTransaction(transaction Transaction)
-	AbortTransaction(id string)
-}
-
-type BasicTransactionManager interface {
-	AddTransaction(transaction Transaction)
-	AbortTransaction(id string)
-}
-
-type ReliableBroadcastTransactionManager interface {
-	InitCommit(t Transaction)
-	ConfirmCommit(t Transaction)
-	AddCommitAck(ack TransactionCommitAck)
-}
-type TransactionManager struct {
-	subscribers            map[string]chan TransactionResult
-	currentInstance        *DbInstance
-	instanceManager        *DbInstanceManager
-	CurrentTransactions    map[string]Transaction
-	transactionBroadcaster TransactionBroadcaster
-	commitAckManager       CommitAckManager
-	commitAckSender        CommitAckSender
-	conflictDetector       ConflictDetector
-	conflictResolver       ConflictResolver
-	dbEntryRepository      DbEntryRepository
+type RbTransactionManager struct {
+	subscribers            map[string]chan domain.TransactionResult
+	currentInstance        *domain.DbInstance
+	instanceManager        *domain.DbInstanceManager
+	CurrentTransactions    map[string]domain.Transaction
+	transactionBroadcaster domain.TransactionBroadcaster
+	commitAckManager       domain.CommitAckManager
+	commitAckSender        domain.CommitAckSender
+	conflictDetector       domain.ConflictDetector
+	conflictResolver       domain.ConflictResolver
+	dbEntryRepository      domain.DbEntryRepository
 	mu                     sync.RWMutex
 }
 
-type TransactionBroadcaster interface {
-	BroadcastTransaction(transaction Transaction) error
-	BroadcastAbort(transaction Transaction) error
-	BroadcastCommitInit(transaction Transaction) error
-	BroadcastCommitConfirmation(transaction Transaction) error
-}
-
-type CommitAckSender interface {
-	SendCommitAck(ack TransactionCommitAck) error
-}
-
-func NewTransactionManager(tb TransactionBroadcaster, cam *TransactionCommitAckManager,
-	repository DbEntryRepository, ackSender CommitAckSender, im *DbInstanceManager) *TransactionManager {
-	tm := &TransactionManager{
-		CurrentTransactions:    make(map[string]Transaction),
+func NewTransactionManager(tb domain.TransactionBroadcaster, cam *domain.TransactionCommitAckManager,
+	repository domain.DbEntryRepository, ackSender domain.CommitAckSender, im *domain.DbInstanceManager) *RbTransactionManager {
+	tm := &RbTransactionManager{
+		CurrentTransactions:    make(map[string]domain.Transaction),
 		transactionBroadcaster: tb,
 		commitAckManager:       cam,
 		commitAckSender:        ackSender,
-		conflictDetector:       &ConflictFinder{},
-		conflictResolver:       &LWWConflictResolver{},
+		conflictDetector:       &domain.ConflictFinder{},
+		conflictResolver:       &domain.LWWConflictResolver{},
 		dbEntryRepository:      repository,
 		instanceManager:        im,
-		subscribers:            make(map[string]chan TransactionResult),
+		subscribers:            make(map[string]chan domain.TransactionResult),
 	}
 	tm.setCurrentInstance()
 	return tm
 }
 
-func (tm *TransactionManager) setCurrentInstance() {
+func (tm *RbTransactionManager) setCurrentInstance() {
 	go func() {
 		resCh := tm.instanceManager.SubscribeToGetCurrentInstance()
 		res := <-resCh
@@ -70,26 +44,28 @@ func (tm *TransactionManager) setCurrentInstance() {
 	}()
 }
 
-func (tm *TransactionManager) Execute(t Transaction) <-chan TransactionResult {
+func (tm *RbTransactionManager) Execute(t domain.Transaction) <-chan domain.TransactionResult {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 	t.InstanceId = tm.currentInstance.Id
 	tm.CurrentTransactions[t.Id] = t
-	ch := make(chan TransactionResult, 1)
+	ch := make(chan domain.TransactionResult, 1)
 	tm.subscribers[t.Id] = ch
 	err := tm.transactionBroadcaster.BroadcastTransaction(t)
 	if err != nil {
-		ch <- FromTransaction(t)
+		ch <- domain.FromTransaction(t)
 		return ch
 	}
 
 	err = tm.transactionBroadcaster.BroadcastCommitInit(t)
 	if err != nil {
-		ch <- FromTransaction(t)
+		ch <- domain.FromTransaction(t)
 		return ch
 	}
 	return ch
 }
 
-func (tm *TransactionManager) StartTransaction(transaction Transaction) {
+func (tm *RbTransactionManager) StartTransaction(transaction domain.Transaction) {
 	tm.AddTransaction(transaction)
 
 	err := tm.transactionBroadcaster.BroadcastTransaction(transaction)
@@ -103,22 +79,22 @@ func (tm *TransactionManager) StartTransaction(transaction Transaction) {
 	}
 }
 
-func (tm *TransactionManager) AddTransaction(transaction Transaction) {
+func (tm *RbTransactionManager) AddTransaction(transaction domain.Transaction) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	transaction.InstanceId = tm.currentInstance.Id
 	tm.CurrentTransactions[transaction.Id] = transaction
 }
 
-func (tm *TransactionManager) StartTransactionAbortion(transaction Transaction) {
-	tm.subscribers[transaction.Id] <- FromTransaction(transaction)
+func (tm *RbTransactionManager) StartTransactionAbortion(transaction domain.Transaction) {
+	tm.subscribers[transaction.Id] <- domain.FromTransaction(transaction)
 	err := tm.transactionBroadcaster.BroadcastAbort(transaction)
 	if err != nil {
 		return
 	}
 }
 
-func (tm *TransactionManager) AbortTransaction(transactionId string) {
+func (tm *RbTransactionManager) AbortTransaction(transactionId string) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	_, exists := tm.CurrentTransactions[transactionId]
@@ -129,7 +105,7 @@ func (tm *TransactionManager) AbortTransaction(transactionId string) {
 	tm.commitAckManager.Remove(transactionId)
 }
 
-func (tm *TransactionManager) StartCommitInit(transaction Transaction) {
+func (tm *RbTransactionManager) StartCommitInit(transaction domain.Transaction) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	if _, exists := tm.CurrentTransactions[transaction.Id]; !exists {
@@ -141,7 +117,7 @@ func (tm *TransactionManager) StartCommitInit(transaction Transaction) {
 	}
 }
 
-func (tm *TransactionManager) InitCommit(transaction Transaction) {
+func (tm *RbTransactionManager) InitCommit(transaction domain.Transaction) {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 	if _, exists := tm.CurrentTransactions[transaction.Id]; !exists {
@@ -151,26 +127,26 @@ func (tm *TransactionManager) InitCommit(transaction Transaction) {
 	if conflict != nil {
 		resolution := tm.conflictResolver.Resolve(*conflict)
 		for _, abortingTransaction := range resolution.AbortingTransactions {
-			ack := NewTransactionCommitAck(abortingTransaction.Id, tm.currentInstance.Id, transaction.InstanceId, false)
+			ack := domain.NewTransactionCommitAck(abortingTransaction.Id, tm.currentInstance.Id, transaction.InstanceId, false)
 			tm.commitAckSender.SendCommitAck(ack)
 		}
 
 		for _, committingTransaction := range resolution.CommitingTransactions {
-			ack := NewTransactionCommitAck(committingTransaction.Id, tm.currentInstance.Id, transaction.InstanceId, true)
+			ack := domain.NewTransactionCommitAck(committingTransaction.Id, tm.currentInstance.Id, transaction.InstanceId, true)
 			tm.commitAckSender.SendCommitAck(ack)
 
 		}
 		return
 	}
 
-	ack := NewTransactionCommitAck(transaction.Id, tm.currentInstance.Id, transaction.InstanceId, true)
+	ack := domain.NewTransactionCommitAck(transaction.Id, tm.currentInstance.Id, transaction.InstanceId, true)
 	err := tm.commitAckSender.SendCommitAck(ack)
 	if err != nil {
 		return
 	}
 }
 
-func (tm *TransactionManager) StartCommitConfirmation(transaction Transaction) {
+func (tm *RbTransactionManager) StartCommitConfirmation(transaction domain.Transaction) {
 	if _, exists := tm.CurrentTransactions[transaction.Id]; !exists {
 		return
 	}
@@ -180,25 +156,27 @@ func (tm *TransactionManager) StartCommitConfirmation(transaction Transaction) {
 	}
 }
 
-func (tm *TransactionManager) ConfirmCommit(transaction Transaction) {
+func (tm *RbTransactionManager) ConfirmCommit(transaction domain.Transaction) {
 	for _, entry := range transaction.WriteSet {
 		tm.dbEntryRepository.Save(entry)
 	}
 	for _, entry := range transaction.DeleteSet {
-		tm.dbEntryRepository.Delete(entry.key)
+		tm.dbEntryRepository.Delete(entry.Key())
 	}
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	delete(tm.CurrentTransactions, transaction.Id)
 	tm.commitAckManager.Remove(transaction.Id)
 	if transaction.InstanceId == tm.currentInstance.Id {
-		result := FromTransaction(transaction)
+		result := domain.FromTransaction(transaction)
 		result.MarkAsSuccessful()
 		tm.subscribers[transaction.Id] <- result
 	}
 }
 
-func (tm *TransactionManager) AddCommitAck(ack TransactionCommitAck) {
+func (tm *RbTransactionManager) AddCommitAck(ack domain.TransactionCommitAck) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
 	if !ack.Valid {
 		transaction, exists := tm.CurrentTransactions[ack.TransactionId]
 		if !exists {

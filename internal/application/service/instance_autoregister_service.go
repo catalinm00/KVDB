@@ -2,6 +2,7 @@ package service
 
 import (
 	"KVDB/internal/domain"
+	"KVDB/internal/domain/strategy"
 	"KVDB/internal/platform/client"
 	"KVDB/internal/platform/config"
 	"log"
@@ -12,7 +13,7 @@ import (
 type InstanceAutoRegisterService struct {
 	configServer       *client.ConfigServerClient
 	instanceManager    *domain.DbInstanceManager
-	transactionManager *domain.TransactionManager
+	transactionManager *strategy.RbTransactionManager
 	config             config.Config
 }
 

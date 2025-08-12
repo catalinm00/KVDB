@@ -28,8 +28,10 @@ func (s *SaveEntryService) Execute(command SaveEntryCommand) SaveEntryResult {
 	entry := domain.NewDbEntry(command.Key, command.Value, false)
 	resCh := s.transactionManager.Execute(domain.TransactionFromWriteEntry(entry))
 	res := <-resCh
+
 	if !res.Success {
 		return SaveEntryResult{}
 	}
+
 	return SaveEntryResult{Entry: entry}
 }

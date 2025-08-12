@@ -95,7 +95,7 @@ func (z *ZeromqTransactionListener) Listen() {
 	go func() {
 		for {
 			msg, err := z.sub.Recv()
-			log.Println("ZeroMQTransactionListener received message:", msg.String())
+			//log.Println("ZeroMQTransactionListener received message:", msg.String())
 			if err != nil {
 				log.Println("Error receiving message:", err)
 				if errors.Is(err, zmq4.ErrClosedConn) {

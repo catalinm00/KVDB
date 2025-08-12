@@ -52,7 +52,7 @@ func (l *ZeromqCommitAckListener) Listen() {
 	go func() {
 		for {
 			msg, err := l.pull.Recv()
-			log.Println("ZeromqCommitAckListener received message:", msg.String())
+			//log.Println("ZeromqCommitAckListener received message:", msg.String())
 			if err != nil {
 				log.Println("Error receiving message:", err)
 				if errors.Is(err, zmq4.ErrClosedConn) {

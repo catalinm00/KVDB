@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"KVDB/internal/application/service"
 	"KVDB/internal/domain"
+	"KVDB/internal/domain/strategy"
 	"KVDB/internal/platform/client"
 	"KVDB/internal/platform/config"
 	"KVDB/internal/platform/messaging/zeromq/listener"
@@ -26,7 +27,12 @@ func Run() (bool, error) {
 	ackSender := publisher.NewZeroMQCommitAckSender(im)
 	tbc := publisher.NewZeroMQTransactionBroadcaster(im)
 	tcam := domain.NewTransactionCommitAckManager(im)
-	tm := domain.NewTransactionManager(tbc, tcam, repo, ackSender, im)
+	// ------------- Transaction Execution Strategy ---------------
+	tm := strategy.NewTransactionManager(tbc, tcam, repo, ackSender, im)
+
+	transactionListener := listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, tm, tm})
+	ackListener := listener.NewZeromqCommitAckListener(listener.ZmqCommitAckListenerDependencies{im, tm})
+	// ------------------------------------------------------------
 	csClient := client.NewConfigServerClient(configuration.ConfigServerUrl)
 	arSvc := service.NewInstanceAutoRegisterService(csClient, im, configuration)
 	uiSvc := service.NewUpdateInstancesService(im)
@@ -37,8 +43,6 @@ func Run() (bool, error) {
 	dbEntryH := dbentry.NewDbEntryHandler(saveSvc, delSvc, getSvc)
 	instanceH := dbinstance.NewDbInstanceHandler(uiSvc)
 	srv := server.NewServer(dbEntryH, instanceH, configuration)
-	transactionListener := listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, tm, tm})
-	ackListener := listener.NewZeromqCommitAckListener(listener.ZmqCommitAckListenerDependencies{im, tm})
 
 	//Starting required components
 	arSvc.Execute()

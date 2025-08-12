@@ -6,6 +6,10 @@ import (
 	"os"
 )
 
+const (
+	ReliableBroadcast = "rb"
+)
+
 var portCmd = flag.Int("port", 3000, "HTTP server port")
 
 type Config struct {
@@ -13,6 +17,7 @@ type Config struct {
 	WalDirectory    string
 	ConfigServerUrl string
 	DeploymentMode  string
+	Algorithm       string
 }
 
 func LoadConfig() Config {
