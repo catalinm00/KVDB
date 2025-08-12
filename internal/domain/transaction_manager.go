@@ -148,15 +148,25 @@ func (tm *TransactionManager) InitCommit(transaction Transaction) {
 		return
 	}
 	conflict := tm.conflictDetector.Check(tm.CurrentTransactions, transaction)
-	resolution := tm.conflictResolver.Resolve(*conflict)
-	for _, abortingTransaction := range resolution.AbortingTransactions {
-		ack := NewTransactionCommitAck(abortingTransaction.Id, tm.currentInstance.Id, transaction.InstanceId, false)
-		tm.commitAckSender.SendCommitAck(ack)
+	if conflict != nil {
+		resolution := tm.conflictResolver.Resolve(*conflict)
+		for _, abortingTransaction := range resolution.AbortingTransactions {
+			ack := NewTransactionCommitAck(abortingTransaction.Id, tm.currentInstance.Id, transaction.InstanceId, false)
+			tm.commitAckSender.SendCommitAck(ack)
+		}
+
+		for _, committingTransaction := range resolution.CommitingTransactions {
+			ack := NewTransactionCommitAck(committingTransaction.Id, tm.currentInstance.Id, transaction.InstanceId, true)
+			tm.commitAckSender.SendCommitAck(ack)
+
+		}
+		return
 	}
 
-	for _, committingTransaction := range resolution.CommitingTransactions {
-		ack := NewTransactionCommitAck(committingTransaction.Id, tm.currentInstance.Id, transaction.InstanceId, true)
-		tm.commitAckSender.SendCommitAck(ack)
+	ack := NewTransactionCommitAck(transaction.Id, tm.currentInstance.Id, transaction.InstanceId, true)
+	err := tm.commitAckSender.SendCommitAck(ack)
+	if err != nil {
+		return
 	}
 }
 

@@ -40,15 +40,19 @@ func Run() (bool, error) {
 	transactionListener := listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, tm, tm})
 	ackListener := listener.NewZeromqCommitAckListener(listener.ZmqCommitAckListenerDependencies{im, tm})
 
+	//Starting required components
 	arSvc.Execute()
 	err := gaiSvc.Execute()
 	if err != nil {
 		return false, err
 	}
 
-	go ackListener.Listen()
+	tbc.Initialize()
 	go transactionListener.Listen()
+
+	go ackListener.Listen()
 	err = ackSender.Initialize()
+
 	if err != nil {
 		return false, err
 	}

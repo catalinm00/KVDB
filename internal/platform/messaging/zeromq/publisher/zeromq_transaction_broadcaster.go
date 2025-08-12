@@ -106,5 +106,5 @@ func zmqMessage(topic string, payload []byte) zmq4.Msg {
 }
 
 func MarshalTransactionMessage(msg message.TransactionMessage) ([]byte, error) {
-	return json.Marshal(msg)
+	return json.MarshalIndent(msg, "", "  ")
 }
