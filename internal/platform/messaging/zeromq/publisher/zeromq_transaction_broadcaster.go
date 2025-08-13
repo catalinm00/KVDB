@@ -21,6 +21,7 @@ const (
 	COMMIT_INIT_TOPIC         = "commit_init"
 	COMMIT_CONFIRMATION_TOPIC = "confirm_commit"
 	ABORT_TOPIC               = "abort"
+	ACK_TOPIC                 = "ack"
 )
 
 func NewZeroMQTransactionBroadcaster(im *domain.DbInstanceManager) *ZeroMQTransactionBroadcaster {
@@ -34,13 +35,13 @@ func NewZeroMQTransactionBroadcaster(im *domain.DbInstanceManager) *ZeroMQTransa
 	}
 }
 
-func (z *ZeroMQTransactionBroadcaster) Initialize() {
+func (z *ZeroMQTransactionBroadcaster) Initialize() error {
 	instance := z.instanceManager.CurrentInstance
 	if instance == nil {
-		return
+		return fmt.Errorf("Current Instance is null")
 	}
 	address := fmt.Sprintf("tcp://*:%d", instance.Port+TransactionPubPortOffset)
-	z.pub.Listen(address)
+	return z.pub.Listen(address)
 }
 
 func (b *ZeroMQTransactionBroadcaster) BroadcastTransaction(transaction domain.Transaction) error {
@@ -95,6 +96,19 @@ func (b *ZeroMQTransactionBroadcaster) BroadcastCommitConfirmation(transaction d
 	return nil
 }
 
+func (b *ZeroMQTransactionBroadcaster) BroadcastAck(transaction domain.TransactionCommitAck) error {
+	payload, err := MarshalAckMessage(message.AckMessageFromCommitAck(transaction))
+	if err != nil {
+		return err
+	}
+	msg := zmqMessage(ACK_TOPIC, payload)
+	err = b.pub.Send(msg)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func zmqMessage(topic string, payload []byte) zmq4.Msg {
 	msg := zmq4.NewMsgFrom(
 		[][]byte{
@@ -107,4 +121,8 @@ func zmqMessage(topic string, payload []byte) zmq4.Msg {
 
 func MarshalTransactionMessage(msg message.TransactionMessage) ([]byte, error) {
 	return json.MarshalIndent(msg, "", "  ")
+}
+
+func MarshalAckMessage(ack message.AckMessage) ([]byte, error) {
+	return json.Marshal(ack)
 }

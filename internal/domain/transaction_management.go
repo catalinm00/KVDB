@@ -22,6 +22,7 @@ type TransactionBroadcaster interface {
 	BroadcastAbort(transaction Transaction) error
 	BroadcastCommitInit(transaction Transaction) error
 	BroadcastCommitConfirmation(transaction Transaction) error
+	BroadcastAck(transaction TransactionCommitAck) error
 }
 
 type CommitAckSender interface {

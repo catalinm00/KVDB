@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 export const options = {
-    vus: 3,       // más usuarios virtuales para saturar
+    vus: 4,       // más usuarios virtuales para saturar
     duration: '45s' // tiempo total de prueba
 };
 

@@ -12,7 +12,7 @@ const (
 )
 
 var portCmd = flag.Int("port", 3000, "HTTP server port")
-var algorithmCmd = flag.String("algorithm", "ev", "Algorithm used to maintain consistency between replicas. Options: 'ev', 'rb'.")
+var algorithmCmd = flag.String("algorithm", "rb", "Algorithm used to maintain consistency between replicas. Options: 'ev', 'rb'.")
 
 type Config struct {
 	ServerPort      int

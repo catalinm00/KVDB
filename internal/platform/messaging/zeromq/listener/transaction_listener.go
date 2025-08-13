@@ -20,6 +20,7 @@ const (
 	CommitInitTopic          = "commit_init"
 	CommitConfirmationTopic  = "confirm_commit"
 	AbortTopic               = "abort"
+	AckTopic                 = "ack"
 )
 
 type ZeromqTransactionListener struct {
@@ -41,12 +42,13 @@ type ZmqTransactionListenerDependencies struct {
 
 func NewZeromqTransactionListener(deps ZmqTransactionListenerDependencies) *ZeromqTransactionListener {
 	reconnectOpt := zmq4.WithAutomaticReconnect(true)
-	retryOpt := zmq4.WithDialerRetry(time.Second * 5)
+	retryOpt := zmq4.WithDialerRetry(time.Second * 2)
 	sub := zmq4.NewSub(context.Background(), reconnectOpt, retryOpt)
 	sub.SetOption(zmq4.OptionSubscribe, TransactionTopic)
 	sub.SetOption(zmq4.OptionSubscribe, AbortTopic)
 	sub.SetOption(zmq4.OptionSubscribe, CommitInitTopic)
 	sub.SetOption(zmq4.OptionSubscribe, CommitConfirmationTopic)
+	sub.SetOption(zmq4.OptionSubscribe, AckTopic)
 
 	listener := &ZeromqTransactionListener{
 		sub:             sub,
@@ -96,12 +98,12 @@ func (z *ZeromqTransactionListener) updateSocketSubscriptions(newInstances []dom
 func (z *ZeromqTransactionListener) Listen() {
 
 	log.Println("ZeroMQTransactionListener - Started.")
-	msgCh := make(chan message.TransactionMessage, 2000)
+	msgCh := make(chan zmq4.Msg, 10000)
 
 	go func() {
 		for {
 			msg, err := z.sub.Recv()
-			//log.Println("ZeroMQTransactionListener received message:", msg.String())
+
 			if err != nil {
 				log.Println("Error receiving message:", err)
 				if errors.Is(err, zmq4.ErrClosedConn) {
@@ -110,22 +112,27 @@ func (z *ZeromqTransactionListener) Listen() {
 				}
 				continue
 			}
-			m, _ := unmarshalTransactionMessage(msg.Frames[1])
-			m.Topic = string(msg.Frames[0])
-			msgCh <- m
+
+			msgCh <- msg
 		}
 	}()
 
 	for msg := range msgCh {
-		switch msg.Topic {
+		topic := string(msg.Frames[0])
+		//log.Println("ZeroMQTransactionListener received message on:", topic, "\n", msg.String())
+		switch topic {
 		case TransactionTopic:
-			go z.basicTM.AddTransaction(msg.ToTransaction())
+			m, _ := unmarshalTransactionMessage(msg.Frames[1])
+			z.basicTM.AddTransaction(m.ToTransaction())
 		case AbortTopic:
-			go z.basicTM.AbortTransaction(msg.ToTransaction().Id)
+			m, _ := unmarshalTransactionMessage(msg.Frames[1])
+			z.basicTM.AbortTransaction(m.ToTransaction().Id)
 		case CommitInitTopic:
-			go z.rbTM.InitCommit(msg.ToTransaction())
-		case CommitConfirmationTopic:
-			go z.rbTM.ConfirmCommit(msg.ToTransaction())
+			m, _ := unmarshalTransactionMessage(msg.Frames[1])
+			z.rbTM.InitCommit(m.ToTransaction())
+		case AckTopic:
+			m, _ := unmarshalAckMessage(msg.Frames[1])
+			z.rbTM.AddCommitAck(m.ToCommitAck())
 		}
 	}
 }
@@ -137,4 +144,13 @@ func unmarshalTransactionMessage(data []byte) (message.TransactionMessage, error
 		return message.TransactionMessage{}, fmt.Errorf("error unmarshalling ack message: %w", err)
 	}
 	return transactionMsg, nil
+}
+
+func unmarshalAckMessage(data []byte) (message.AckMessage, error) {
+	var ackMsg message.AckMessage
+	err := json.Unmarshal(data, &ackMsg)
+	if err != nil {
+		return message.AckMessage{}, fmt.Errorf("error unmarshalling ack message: %w", err)
+	}
+	return ackMsg, nil
 }

@@ -11,6 +11,12 @@ type mockBroadcaster struct {
 	broadcastedAborts        []domain.Transaction
 	broadcastedCommitInits   []domain.Transaction
 	broadcastedConfirmations []domain.Transaction
+	broadcastedAcks          []domain.TransactionCommitAck
+}
+
+func (m *mockBroadcaster) BroadcastAck(transaction domain.TransactionCommitAck) error {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (m *mockBroadcaster) BroadcastTransaction(tx domain.Transaction) error {
@@ -91,25 +97,8 @@ func createTransactionManager(b *mockBroadcaster, cam *mockCommitAckManager, rep
 		commitAckManager:       cam,
 		dbEntryRepository:      repo,
 		currentInstance:        instance,
-		commitAckSender:        ackSender,
 	}
 	return tm
-}
-
-func TestTransactionManager_StartTransaction(t *testing.T) {
-	b := &mockBroadcaster{}
-	cam := &mockCommitAckManager{}
-	repo := &mockRepo{}
-	ackSender := &mockCommitAckSender{}
-	instance := &domain.DbInstance{Id: 1}
-	tm := createTransactionManager(b, cam, repo, instance, ackSender)
-
-	tx := domain.NewTransaction()
-	tm.StartTransaction(tx)
-
-	assert.Len(t, b.broadcastedTxs, 1)
-	assert.Len(t, b.broadcastedCommitInits, 1)
-	assert.Equal(t, instance.Id, tm.CurrentTransactions[tx.Id].InstanceId)
 }
 
 func TestTransactionManager_AddAndAbortTransaction(t *testing.T) {
@@ -119,7 +108,6 @@ func TestTransactionManager_AddAndAbortTransaction(t *testing.T) {
 	ackSender := &mockCommitAckSender{}
 	instance := &domain.DbInstance{Id: 2}
 	tm := createTransactionManager(b, cam, repo, instance, ackSender)
-	tm.commitAckSender = ackSender
 
 	tx := domain.NewTransaction()
 	tm.AddTransaction(tx)
@@ -136,7 +124,6 @@ func Test_Given_WhenConfirmCommit_thenCommitTransaction(t *testing.T) {
 	ackSender := &mockCommitAckSender{}
 	instance := &domain.DbInstance{Id: 3}
 	tm := createTransactionManager(b, cam, repo, instance, ackSender)
-	tm.commitAckSender = ackSender
 
 	tx := domain.NewTransaction()
 	tx.AddWriteEntry(domain.NewDbEntry("k", "v", false))
@@ -157,7 +144,6 @@ func Test_GivenConflict_WhenCommitInit_thenCommitNewestAndAbortOldest(t *testing
 	ackSender := &mockCommitAckSender{}
 	instance := &domain.DbInstance{Id: 3}
 	tm := createTransactionManager(b, cam, repo, instance, ackSender)
-	tm.commitAckSender = ackSender
 
 	tx := domain.TransactionFromWriteEntry(domain.NewDbEntry("k", "v1", false))
 	tx2 := domain.TransactionFromWriteEntry(domain.NewDbEntry("k", "v2", false))
@@ -180,7 +166,6 @@ func Test_GivenReceivedPositiveAck_WhenNotReceivedAckFromAllInstances_AddCommitA
 	ackSender := &mockCommitAckSender{}
 	instance := &domain.DbInstance{Id: 1}
 	tm := createTransactionManager(b, cam, repo, instance, ackSender)
-	tm.commitAckSender = ackSender
 
 	//Transactions with no conflict
 
@@ -201,7 +186,6 @@ func Test_GivenPositiveAck_WhenReceiveAckFromAllInstances_thenStartCommitConfirm
 	ackSender := &mockCommitAckSender{}
 	instance := &domain.DbInstance{Id: 1}
 	tm := createTransactionManager(b, cam, repo, instance, ackSender)
-	tm.commitAckSender = ackSender
 
 	tx := domain.TransactionFromWriteEntry(domain.NewDbEntry("k", "v", false))
 	tm.AddTransaction(tx)
@@ -222,7 +206,6 @@ func Test_GivenNegativeAck_WhenReceiveAck_thenStartAbortion(t *testing.T) {
 	ackSender := &mockCommitAckSender{}
 	instance := &domain.DbInstance{Id: 1}
 	tm := createTransactionManager(b, cam, repo, instance, ackSender)
-	tm.commitAckSender = ackSender
 
 	tx := domain.TransactionFromWriteEntry(domain.NewDbEntry("k", "v", false))
 	tm.AddTransaction(tx)

@@ -27,11 +27,10 @@ func Run() (bool, error) {
 	im := domain.NewDbInstanceManager()
 	tbc := publisher.NewZeroMQTransactionBroadcaster(im)
 	tcam := domain.NewTransactionCommitAckManager(im)
-	ackSender := publisher.NewZeroMQCommitAckSender(im)
+
 	// ------------- Transaction Execution Strategy ---------------
 	var tm domain.TransactionExecutionStrategy
 	var transactionListener *listener.ZeromqTransactionListener
-	var ackListener *listener.ZeromqCommitAckListener
 
 	log.Println("Chosen broadcast strategy:", configuration.Algorithm)
 	switch configuration.Algorithm {
@@ -40,9 +39,8 @@ func Run() (bool, error) {
 		transactionListener = listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, tm, nil, false})
 	case "rb":
 
-		rbtm := strategy.NewRbTransactionManager(tbc, tcam, repo, ackSender, im)
-		transactionListener = listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, rbtm, rbtm, true})
-		ackListener = listener.NewZeromqCommitAckListener(listener.ZmqCommitAckListenerDependencies{im, rbtm})
+		rbtm := strategy.NewRbTransactionManager(tbc, tcam, repo, im)
+		transactionListener = listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, rbtm, rbtm, false})
 
 		tm = rbtm
 	}
@@ -69,17 +67,6 @@ func Run() (bool, error) {
 	if tbc != nil {
 		tbc.Initialize()
 		go transactionListener.Listen()
-	}
-
-	if configuration.Algorithm == "rb" {
-		if ackListener != nil {
-			go ackListener.Listen()
-			err := ackSender.Initialize()
-
-			if err != nil {
-				return false, err
-			}
-		}
 	}
 
 	err = srv.Run()
