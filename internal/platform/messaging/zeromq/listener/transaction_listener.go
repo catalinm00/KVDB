@@ -29,12 +29,14 @@ type ZeromqTransactionListener struct {
 	rbTM            domain.ReliableBroadcastTransactionManager
 	instances       map[uint64]domain.DbInstance
 	mu              sync.Mutex
+	autoSubscribe   bool
 }
 
 type ZmqTransactionListenerDependencies struct {
 	InstanceManager         *domain.DbInstanceManager
-	BasicTransactionManager domain.BasicTransactionManager             `name:"TransactionStrategy"`
-	RbTM                    domain.ReliableBroadcastTransactionManager `name:"TransactionStrategy"`
+	BasicTransactionManager domain.BasicTransactionManager
+	RbTM                    domain.ReliableBroadcastTransactionManager
+	AutoSubscribe           bool
 }
 
 func NewZeromqTransactionListener(deps ZmqTransactionListenerDependencies) *ZeromqTransactionListener {
@@ -52,6 +54,7 @@ func NewZeromqTransactionListener(deps ZmqTransactionListenerDependencies) *Zero
 		basicTM:         deps.BasicTransactionManager,
 		rbTM:            deps.RbTM,
 		instances:       make(map[uint64]domain.DbInstance),
+		autoSubscribe:   deps.AutoSubscribe,
 	}
 	listener.subscribeToInstanceChanges()
 	return listener
@@ -78,6 +81,9 @@ func (z *ZeromqTransactionListener) subscribeToInstanceChanges() {
 func (z *ZeromqTransactionListener) updateSocketSubscriptions(newInstances []domain.DbInstance) {
 
 	for _, instance := range newInstances {
+		if !z.autoSubscribe && instance.Id == z.instanceManager.CurrentInstance.Id {
+			continue
+		}
 		if _, found := z.instances[instance.Id]; !found {
 			err := z.sub.Dial(fmt.Sprintf("tcp://%s:%d", instance.Host, instance.Port+TransactionPubPortOffset))
 			if err != nil {

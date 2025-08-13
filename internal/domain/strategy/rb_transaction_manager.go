@@ -19,7 +19,7 @@ type RbTransactionManager struct {
 	mu                     sync.RWMutex
 }
 
-func NewTransactionManager(tb domain.TransactionBroadcaster, cam *domain.TransactionCommitAckManager,
+func NewRbTransactionManager(tb domain.TransactionBroadcaster, cam *domain.TransactionCommitAckManager,
 	repository domain.DbEntryRepository, ackSender domain.CommitAckSender, im *domain.DbInstanceManager) *RbTransactionManager {
 	tm := &RbTransactionManager{
 		CurrentTransactions:    make(map[string]domain.Transaction),

@@ -7,10 +7,12 @@ import (
 )
 
 const (
-	ReliableBroadcast = "rb"
+	ReliableBroadcastAlgorithm = "rb"
+	EventualAlgorithm          = "ev"
 )
 
 var portCmd = flag.Int("port", 3000, "HTTP server port")
+var algorithmCmd = flag.String("algorithm", "ev", "Algorithm used to maintain consistency between replicas. Options: 'ev', 'rb'.")
 
 type Config struct {
 	ServerPort      int
@@ -27,5 +29,6 @@ func LoadConfig() Config {
 		WalDirectory:    os.Getenv("WAL_DIRECTORY"),
 		ConfigServerUrl: os.Getenv("CONFIG_SERVER_URL"),
 		DeploymentMode:  os.Getenv("DEPLOYMENT_MODE"),
+		Algorithm:       *algorithmCmd,
 	}
 }

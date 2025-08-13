@@ -14,6 +14,7 @@ import (
 	"KVDB/internal/platform/server/handler/dbentry"
 	"KVDB/internal/platform/server/handler/dbinstance"
 	"flag"
+	"log"
 )
 
 func Run() (bool, error) {
@@ -24,14 +25,28 @@ func Run() (bool, error) {
 	mem := lsm_tree.NewMemtable(w)
 	repo := repository.NewLSMTreeRepository(mem)
 	im := domain.NewDbInstanceManager()
-	ackSender := publisher.NewZeroMQCommitAckSender(im)
 	tbc := publisher.NewZeroMQTransactionBroadcaster(im)
 	tcam := domain.NewTransactionCommitAckManager(im)
+	ackSender := publisher.NewZeroMQCommitAckSender(im)
 	// ------------- Transaction Execution Strategy ---------------
-	tm := strategy.NewTransactionManager(tbc, tcam, repo, ackSender, im)
+	var tm domain.TransactionExecutionStrategy
+	var transactionListener *listener.ZeromqTransactionListener
+	var ackListener *listener.ZeromqCommitAckListener
 
-	transactionListener := listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, tm, tm})
-	ackListener := listener.NewZeromqCommitAckListener(listener.ZmqCommitAckListenerDependencies{im, tm})
+	log.Println("Chosen broadcast strategy:", configuration.Algorithm)
+	switch configuration.Algorithm {
+	case "ev":
+		tm = strategy.NewEventualTransactionManager(repo, tbc)
+		transactionListener = listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, tm, nil, false})
+	case "rb":
+
+		rbtm := strategy.NewRbTransactionManager(tbc, tcam, repo, ackSender, im)
+		transactionListener = listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, rbtm, rbtm, true})
+		ackListener = listener.NewZeromqCommitAckListener(listener.ZmqCommitAckListenerDependencies{im, rbtm})
+
+		tm = rbtm
+	}
+
 	// ------------------------------------------------------------
 	csClient := client.NewConfigServerClient(configuration.ConfigServerUrl)
 	arSvc := service.NewInstanceAutoRegisterService(csClient, im, configuration)
@@ -51,15 +66,22 @@ func Run() (bool, error) {
 		return false, err
 	}
 
-	tbc.Initialize()
-	go transactionListener.Listen()
-
-	go ackListener.Listen()
-	err = ackSender.Initialize()
-
-	if err != nil {
-		return false, err
+	if tbc != nil {
+		tbc.Initialize()
+		go transactionListener.Listen()
 	}
+
+	if configuration.Algorithm == "rb" {
+		if ackListener != nil {
+			go ackListener.Listen()
+			err := ackSender.Initialize()
+
+			if err != nil {
+				return false, err
+			}
+		}
+	}
+
 	err = srv.Run()
 	if err != nil {
 		return false, err
