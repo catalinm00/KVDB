@@ -7,6 +7,7 @@ import (
 	"KVDB/internal/platform/config"
 	"log"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -51,7 +52,7 @@ func (i *InstanceAutoRegisterService) Execute() {
 }
 
 func (i *InstanceAutoRegisterService) getOutboundIP() string {
-	if i.config.DeploymentMode == "devel" {
+	if strings.Contains(i.config.DeploymentMode, "devel") {
 		return "localhost"
 	}
 	conn, err := net.Dial("udp", "8.8.8.8:80")

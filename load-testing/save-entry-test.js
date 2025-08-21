@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 export const options = {
-    vus: 4,       // más usuarios virtuales para saturar
+    vus: 70,       // más usuarios virtuales para saturar
     duration: '45s' // tiempo total de prueba
 };
 
@@ -16,7 +16,7 @@ function generateRandomKey(length) {
 }
 
 export default function () {
-    const url = 'http://localhost:3000/api/db';
+    const url = 'http://localhost:3070/api/db';
     const payload = JSON.stringify({
         key: generateRandomKey(6),
         value: 'foobar'

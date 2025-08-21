@@ -2,7 +2,7 @@ package client
 
 import (
 	"KVDB/internal/domain"
-	"encoding/json"
+	json "github.com/json-iterator/go"
 	"net/http"
 	"net/http/httptest"
 	"testing"

@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"log"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -36,7 +37,10 @@ func NewServer(entryHandler *dbentry.DbEntryHandler,
 		instanceHandler: instanceHandler,
 		config:          config,
 	}
-	srv.engine.Use(middleware.Logger)
+	if !strings.Contains(config.DeploymentMode, "performance") {
+		log.Println("Performace mode: OFF")
+		srv.engine.Use(middleware.Logger)
+	}
 	srv.registerRoutes()
 	return srv
 }

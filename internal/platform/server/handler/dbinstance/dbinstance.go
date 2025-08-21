@@ -3,8 +3,8 @@ package dbinstance
 import (
 	"KVDB/internal/application/service"
 	"KVDB/internal/domain"
-	"encoding/json"
 	"fmt"
+	json "github.com/json-iterator/go"
 	"io/ioutil"
 	"net/http"
 )

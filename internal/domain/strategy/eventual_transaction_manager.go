@@ -6,7 +6,6 @@ import (
 )
 
 type EventualTransactionManager struct {
-	subscribers         map[string]chan domain.TransactionResult
 	currentTransactions map[string]domain.Transaction
 	repository          domain.DbEntryRepository
 	broadcaster         domain.TransactionBroadcaster
@@ -16,7 +15,6 @@ type EventualTransactionManager struct {
 func NewEventualTransactionManager(repository domain.DbEntryRepository,
 	broadcaster domain.TransactionBroadcaster) *EventualTransactionManager {
 	return &EventualTransactionManager{
-		subscribers:         make(map[string]chan domain.TransactionResult),
 		currentTransactions: make(map[string]domain.Transaction),
 		repository:          repository,
 		broadcaster:         broadcaster,
@@ -24,19 +22,21 @@ func NewEventualTransactionManager(repository domain.DbEntryRepository,
 }
 
 func (e *EventualTransactionManager) Execute(transaction domain.Transaction) <-chan domain.TransactionResult {
-	e.mu.Lock()
-	defer e.mu.Unlock()
 	ch := make(chan domain.TransactionResult, 1)
-	e.subscribers[transaction.Id] = ch
-	err := e.broadcaster.BroadcastTransaction(transaction)
 
-	if err != nil {
-		ch <- domain.FromTransaction(transaction)
-		return ch
-	}
-
+	e.mu.Lock()
 	ch <- e.execute(transaction)
-	close(ch)
+	e.mu.Unlock()
+
+	go func() {
+		err := e.broadcaster.BroadcastTransaction(transaction)
+
+		if err != nil {
+			ch <- domain.FromTransaction(transaction)
+		}
+	}()
+	go close(ch)
+
 	return ch
 }
 

@@ -4,9 +4,9 @@ import (
 	"KVDB/internal/domain"
 	"KVDB/internal/platform/messaging/zeromq/message"
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/go-zeromq/zmq4"
+	json "github.com/json-iterator/go"
 	"time"
 )
 
