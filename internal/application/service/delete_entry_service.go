@@ -22,14 +22,14 @@ type DeleteEntryCommand struct {
 
 type DeleteEntryResult struct {
 	Entry domain.DbEntry
-	err   error
+	Err   error
 }
 
 func (s *DeleteEntryService) Execute(command DeleteEntryCommand) DeleteEntryResult {
 	entry, found := s.repository.Get(command.Key)
 	if !found {
 		return DeleteEntryResult{
-			err: errors.New(fmt.Sprintf("Entry with Key: %s not found in database", command.Key)),
+			Err: errors.New(fmt.Sprintf("Entry with Key: %s not found in database", command.Key)),
 		}
 	}
 	entry.Delete()

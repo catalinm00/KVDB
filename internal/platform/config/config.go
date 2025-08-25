@@ -16,6 +16,7 @@ var algorithmCmd = flag.String("algorithm", "rb", "Algorithm used to maintain co
 
 type Config struct {
 	ServerPort      int
+	ZmqApiPort      int
 	WalDirectory    string
 	ConfigServerUrl string
 	DeploymentMode  string
@@ -26,6 +27,7 @@ func LoadConfig() Config {
 	godotenv.Load(".env")
 	return Config{
 		ServerPort:      *portCmd,
+		ZmqApiPort:      *portCmd + 7,
 		WalDirectory:    os.Getenv("WAL_DIRECTORY"),
 		ConfigServerUrl: os.Getenv("CONFIG_SERVER_URL"),
 		DeploymentMode:  os.Getenv("DEPLOYMENT_MODE"),

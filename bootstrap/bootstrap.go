@@ -4,6 +4,7 @@ import (
 	"KVDB/internal/application/service"
 	"KVDB/internal/domain"
 	"KVDB/internal/domain/strategy"
+	"KVDB/internal/platform/api/zmq"
 	"KVDB/internal/platform/client"
 	"KVDB/internal/platform/config"
 	"KVDB/internal/platform/messaging/zeromq/listener"
@@ -56,6 +57,7 @@ func Run() (bool, error) {
 	dbEntryH := dbentry.NewDbEntryHandler(saveSvc, delSvc, getSvc)
 	instanceH := dbinstance.NewDbInstanceHandler(uiSvc)
 	srv := server.NewServer(dbEntryH, instanceH, configuration)
+	zmqApi := zmq.NewZmqApi(getSvc, saveSvc, delSvc, configuration)
 
 	//Starting required components
 	arSvc.Execute()
@@ -68,6 +70,8 @@ func Run() (bool, error) {
 		tbc.Initialize()
 		go transactionListener.Listen()
 	}
+
+	go zmqApi.Listen()
 
 	err = srv.Run()
 	if err != nil {
