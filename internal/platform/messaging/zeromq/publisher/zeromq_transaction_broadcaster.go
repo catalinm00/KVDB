@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/go-zeromq/zmq4"
 	json "github.com/json-iterator/go"
+	"log"
 	"time"
 )
 
@@ -29,9 +30,18 @@ func NewZeroMQTransactionBroadcaster(im *domain.DbInstanceManager) *ZeroMQTransa
 	retryOpt := zmq4.WithDialerRetry(time.Second * 5)
 	socket := zmq4.NewPub(context.Background(), reconnectOpt, retryOpt)
 
-	return &ZeroMQTransactionBroadcaster{
+	z := &ZeroMQTransactionBroadcaster{
 		pub:             socket,
 		instanceManager: im,
+	}
+	go z.subscribeToCurrentInstance()
+	return z
+}
+
+func (z *ZeroMQTransactionBroadcaster) subscribeToCurrentInstance() {
+	ch := z.instanceManager.SubscribeToGetCurrentInstance()
+	for range ch {
+		z.Initialize()
 	}
 }
 
@@ -41,7 +51,13 @@ func (z *ZeroMQTransactionBroadcaster) Initialize() error {
 		return fmt.Errorf("Current Instance is null")
 	}
 	address := fmt.Sprintf("tcp://*:%d", instance.Port+TransactionPubPortOffset)
-	return z.pub.Listen(address)
+	err := z.pub.Listen(address)
+	if err != nil {
+		log.Println("Error starting transaction publisher", err)
+		return err
+	}
+	log.Println("Started transaction publisher")
+	return err
 }
 
 func (b *ZeroMQTransactionBroadcaster) BroadcastTransaction(transaction domain.Transaction) error {

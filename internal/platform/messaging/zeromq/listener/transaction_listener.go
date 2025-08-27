@@ -70,7 +70,6 @@ func (z *ZeromqTransactionListener) subscribeToInstanceChanges() {
 	sub := z.instanceManager.Subscribe()
 	go func() {
 		for instances := range sub {
-			log.Println("Updated instances on ZeroMQTransactionListener")
 
 			z.mu.Lock()
 			z.updateSocketSubscriptions(instances)
@@ -80,6 +79,7 @@ func (z *ZeromqTransactionListener) subscribeToInstanceChanges() {
 			}
 
 			z.mu.Unlock()
+			log.Println("Updated instances on ZeroMQTransactionListener")
 		}
 	}()
 }

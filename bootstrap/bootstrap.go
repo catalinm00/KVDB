@@ -49,12 +49,9 @@ func Run() (bool, error) {
 	case "rb":
 		tbc := publisher.NewZeroMQTransactionBroadcaster(im)
 		rbtm := strategy.NewRbTransactionManager(tbc, tcam, repo, im)
-		transactionListener = listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, rbtm, rbtm, false})
+		transactionListener = listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, rbtm, rbtm, true})
 		tm = rbtm
-		if tbc != nil {
-			tbc.Initialize()
-			go transactionListener.Listen()
-		}
+		go transactionListener.Listen()
 	case "at":
 		tbc := publisher.NewAtomicBroadcaster(configuration)
 		tm = strategy.NewAtomicTransactionManager(im, repo, tbc)
