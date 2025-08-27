@@ -15,7 +15,7 @@ type Memtable struct {
 
 func NewMemtable(wal *WAL) *Memtable {
 	return &Memtable{
-		skiplist: NewSkipList(90, 0.5),
+		skiplist: NewSkipList(32, 0.5),
 		wal:      wal,
 	}
 }

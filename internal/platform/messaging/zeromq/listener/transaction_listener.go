@@ -23,6 +23,10 @@ const (
 	AckTopic                 = "ack"
 )
 
+type TransactionListener interface {
+	Listen()
+}
+
 type ZeromqTransactionListener struct {
 	sub             zmq4.Socket
 	instanceManager *domain.DbInstanceManager

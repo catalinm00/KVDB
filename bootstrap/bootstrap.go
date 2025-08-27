@@ -4,7 +4,6 @@ import (
 	"KVDB/internal/application/service"
 	"KVDB/internal/domain"
 	"KVDB/internal/domain/strategy"
-	"KVDB/internal/platform/api/zmq"
 	"KVDB/internal/platform/client"
 	"KVDB/internal/platform/config"
 	"KVDB/internal/platform/messaging/zeromq/listener"
@@ -26,52 +25,62 @@ func Run() (bool, error) {
 	mem := lsm_tree.NewMemtable(w)
 	repo := repository.NewLSMTreeRepository(mem)
 	im := domain.NewDbInstanceManager()
-	tbc := publisher.NewZeroMQTransactionBroadcaster(im)
 	tcam := domain.NewTransactionCommitAckManager(im)
+
+	csClient := client.NewConfigServerClient(configuration.ConfigServerUrl)
+
+	uiSvc := service.NewUpdateInstancesService(im)
+	gaiSvc := service.NewGetAllInstancesService(csClient, im)
 
 	// ------------- Transaction Execution Strategy ---------------
 	var tm domain.TransactionExecutionStrategy
-	var transactionListener *listener.ZeromqTransactionListener
+	var transactionListener listener.TransactionListener
 
 	log.Println("Chosen broadcast strategy:", configuration.Algorithm)
 	switch configuration.Algorithm {
 	case "ev":
+		tbc := publisher.NewZeroMQTransactionBroadcaster(im)
 		tm = strategy.NewEventualTransactionManager(repo, tbc)
 		transactionListener = listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, tm, nil, false})
+		if tbc != nil {
+			tbc.Initialize()
+			go transactionListener.Listen()
+		}
 	case "rb":
-
+		tbc := publisher.NewZeroMQTransactionBroadcaster(im)
 		rbtm := strategy.NewRbTransactionManager(tbc, tcam, repo, im)
 		transactionListener = listener.NewZeromqTransactionListener(listener.ZmqTransactionListenerDependencies{im, rbtm, rbtm, false})
-
 		tm = rbtm
+		if tbc != nil {
+			tbc.Initialize()
+			go transactionListener.Listen()
+		}
+	case "at":
+		tbc := publisher.NewAtomicBroadcaster(configuration)
+		tm = strategy.NewAtomicTransactionManager(im, repo, tbc)
+		transactionListener = listener.NewZeromqAtomicTransactionListener(tm, configuration)
+		if tbc != nil {
+			tbc.Initialize()
+			go transactionListener.Listen()
+		}
 	}
 
 	// ------------------------------------------------------------
-	csClient := client.NewConfigServerClient(configuration.ConfigServerUrl)
-	arSvc := service.NewInstanceAutoRegisterService(csClient, im, configuration)
-	uiSvc := service.NewUpdateInstancesService(im)
-	gaiSvc := service.NewGetAllInstancesService(csClient, im)
-	delSvc := service.NewDeleteEntryService(repo)
-	saveSvc := service.NewSaveEntryService(tm)
-	getSvc := service.NewGetEntryService(repo)
-	dbEntryH := dbentry.NewDbEntryHandler(saveSvc, delSvc, getSvc)
-	instanceH := dbinstance.NewDbInstanceHandler(uiSvc)
-	srv := server.NewServer(dbEntryH, instanceH, configuration)
-	zmqApi := zmq.NewZmqApi(getSvc, saveSvc, delSvc, configuration)
 
 	//Starting required components
+	arSvc := service.NewInstanceAutoRegisterService(csClient, im, configuration)
 	arSvc.Execute()
 	err := gaiSvc.Execute()
 	if err != nil {
 		return false, err
 	}
 
-	if tbc != nil {
-		tbc.Initialize()
-		go transactionListener.Listen()
-	}
-
-	go zmqApi.Listen()
+	delSvc := service.NewDeleteEntryService(repo)
+	saveSvc := service.NewSaveEntryService(tm)
+	getSvc := service.NewGetEntryService(repo)
+	dbEntryH := dbentry.NewDbEntryHandler(saveSvc, delSvc, getSvc)
+	instanceH := dbinstance.NewDbInstanceHandler(uiSvc)
+	srv := server.NewServer(dbEntryH, instanceH, configuration)
 
 	err = srv.Run()
 	if err != nil {

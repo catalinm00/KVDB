@@ -24,6 +24,16 @@ func (c *Conflict) MostRecentTransaction() *Transaction {
 	return mostRecent
 }
 
+func (c *Conflict) OldestTransaction() *Transaction {
+	var oldest *Transaction
+	for _, transaction := range c.transactions {
+		if oldest == nil || transaction.Timestamp < oldest.Timestamp {
+			oldest = &transaction
+		}
+	}
+	return oldest
+}
+
 func (c *Conflict) Transactions() map[string]Transaction {
 	return c.transactions
 }
