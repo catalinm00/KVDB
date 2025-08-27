@@ -120,7 +120,7 @@ func (tm *RbTransactionManager) InitCommit(transaction domain.Transaction) {
 	}
 
 	ack := domain.NewTransactionCommitAck(transaction.Id, tm.currentInstance.Id, transaction.InstanceId, true)
-	tm.AddCommitAck(ack)
+	//tm.AddCommitAck(ack)
 	err := tm.transactionBroadcaster.BroadcastAck(ack)
 	if err != nil {
 		return
@@ -141,13 +141,13 @@ func (tm *RbTransactionManager) StartInitCommit(transaction domain.Transaction) 
 		resolution := tm.conflictResolver.Resolve(*conflict)
 		for _, abortingTransaction := range resolution.AbortingTransactions {
 			ack := domain.NewTransactionCommitAck(abortingTransaction.Id, tm.currentInstance.Id, transaction.InstanceId, false)
-			tm.commitAckManager.Add(ack)
+			//tm.commitAckManager.Add(ack)
 			tm.transactionBroadcaster.BroadcastAck(ack)
 		}
 
 		for _, committingTransaction := range resolution.CommitingTransactions {
 			ack := domain.NewTransactionCommitAck(committingTransaction.Id, tm.currentInstance.Id, transaction.InstanceId, true)
-			tm.commitAckManager.Add(ack)
+			//tm.commitAckManager.Add(ack)
 			tm.transactionBroadcaster.BroadcastAck(ack)
 		}
 		return
@@ -158,7 +158,7 @@ func (tm *RbTransactionManager) StartInitCommit(transaction domain.Transaction) 
 	}
 
 	ack := domain.NewTransactionCommitAck(transaction.Id, tm.currentInstance.Id, transaction.InstanceId, true)
-	tm.commitAckManager.Add(ack)
+	//tm.commitAckManager.Add(ack)
 	err = tm.transactionBroadcaster.BroadcastAck(ack)
 	if err != nil {
 		return
