@@ -55,13 +55,27 @@ func (i *InstanceAutoRegisterService) getOutboundIP() string {
 	if strings.Contains(i.config.DeploymentMode, "devel") {
 		return "localhost"
 	}
-	conn, err := net.Dial("udp", "8.8.8.8:80")
+	ips, err := GetLocalIPs()
 	if err != nil {
-		log.Fatal(err)
+		return "localhost"
 	}
-	defer conn.Close()
+	log.Println(ips)
+	return ips[0].String()
+}
 
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
+func GetLocalIPs() ([]net.IP, error) {
+	var ips []net.IP
+	addresses, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil, err
+	}
 
-	return localAddr.IP.String()
+	for _, addr := range addresses {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				ips = append(ips, ipnet.IP)
+			}
+		}
+	}
+	return ips, nil
 }
